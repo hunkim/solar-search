@@ -22,6 +22,10 @@ def get_search_query(query):
         model=solar_model,
         messages=[
             {
+                "role": "system",
+                "content": "You are a search query generator. Find the best search keywords.",
+            },
+            {
                 "role": "user",
                 "content": "Extract good search keywords from user input. Write in json format.",
             },
@@ -39,6 +43,60 @@ def get_search_query(query):
         return json_query.get("search", query)
     except:
         return query
+
+
+def answer_verifier(query, context, answer):
+    chat_completion = solar_llm.chat.completions.create(
+        model=solar_model,
+        messages=[
+            {
+                "role": "system",
+                "content": "Your answer verifier. Verify the answer is correct or incorrect based on the context. The answer should be always from the context.",
+            },
+            {
+                "role": "user",
+                "content": """Query: How many dogs do we have?
+---
+Context: We have 3 dogs. They are all golden retrievers. They are very friendly.
+---
+Answer: I have three dogs and they are golden retrievers.
+             """,
+            },
+            {"role": "assistant", "content": '{"verification_result": "correct"}'},
+            {
+                "role": "user",
+                "content": """Query: Why sky is blue?
+---
+Context: Sky is blue because of Rayleigh scattering. The sky is blue because of the way the Earth's atmosphere scatters sunlight.
+---
+Answer: Sky is blue because of people like blue colors.
+             """,
+            },
+            {"role": "assistant", "content": '{"verification_result": ""}'},
+            {
+                "role": "user",
+                "content": """Query: What is the capital of France?
+--- 
+Context: The capital of France is Paris. The Eiffel Tower is in Paris. Food in Paris is good.
+---
+Answer: The capital of France is Seoul. I love seoul.
+             """,
+            },
+            {"role": "assistant", "content": '{"verification_result": "incorrect"}'},
+            {
+                "role": "user",
+                "content": f"""Query: {query}\n---\nContext: {context}\n---\nAnswer: {answer}
+             """,
+            },
+        ],
+    )
+
+    # parse content in json format
+    try:
+        json_query = json.loads(chat_completion.choices[0].message.content)
+        return json_query.get("verification_result", query)
+    except:
+        return "not sure"
 
 
 def news(query: str):
@@ -71,6 +129,9 @@ def search(query):
 
 
 def show_search_results(search_results):
+    if not search_results or len(search_results) == 0:
+        return
+
     st.markdown("*Search Results*")
     search_row = row(len(search_results), vertical_align="center")
     for article in search_results:
@@ -82,7 +143,7 @@ def show_search_results(search_results):
 
 
 def show_news_articles(news_articles):
-    if len(news_articles) == 0:
+    if not news_articles or len(news_articles) == 0:
         return
 
     st.markdown("*News Results*")
@@ -93,6 +154,32 @@ def show_news_articles(news_articles):
             article["url"],
             use_container_width=True,
         )
+
+
+def find_answer(query, search_results, news_articles):
+    context = f"""
+---
+SEARCH RESULTS:\n
+{str(search_results)}\n\n
+---
+NEWS RESULTS:\n
+{str(news_articles)}\n\n
+"""
+    final_prompt = f"""Provide a comprehensive answer and get straight to the point to answer the question.
+Only use the results to answer. Do not use any other knowledges.\n\n
+Reply in the language of the query. For example, if the query is in Korean, reply in Korean. If it's in English, reply in English.\n\n
+Here are the search results for question '{query}':\n\n
+{context}
+"""
+
+    with st.chat_message("assistant"):
+        stream = solar_llm.chat.completions.create(
+            model=solar_model,
+            messages=[{"role": "user", "content": final_prompt}],
+            stream=True,
+        )
+        response = st.write_stream(stream)
+    return response, context
 
 
 def perform_search(query):
@@ -118,26 +205,31 @@ def perform_search(query):
         }
     )
 
-    final_prompt = f"""Provide a comprehensive answer and get straight to the point to answer the question.
-Only use the results to answer. Do not use any other knowledges.\n\n
-Reply in the language of the query. For example, if the query is in Korean, reply in Korean. If it's in English, reply in English.\n\n
-Here are the search results for question '{query}':\n\n
----
-SEARCH RESULTS:\n
-{str(search_results)}\n\n
----
-NEWS RESULTS:\n
-{str(news_articles)}\n\n
-"""
+    verify_result = "not sure"
+    response = ""
+    for attempt in range(3):
+        response, context = find_answer(query, search_results, news_articles)
+        with st.spinner(f"Verifying the answer ({attempt})..."):
+            verify_result = answer_verifier(query, context, response)
+        if verify_result == "correct":
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": "✅ " + response,
+                }
+            )
+            st.success(f"The answer is {verify_result}")
 
-    with st.chat_message("assistant"):
-        stream = solar_llm.chat.completions.create(
-            model=solar_model,
-            messages=[{"role": "user", "content": final_prompt}],
-            stream=True,
+            break
+        st.warning(f"It seems the answer is {verify_result}. Attempting again...")
+    if verify_result != "correct":
+        st.error("I am not sure about the answer. Please ask me another question.")
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": f"I am not sure about the answer. Please ask me another question.\n\n🤷🤷‍♀️ Answer: {response}",
+            }
         )
-        response = st.write_stream(stream)
-    st.session_state.messages.append({"role": "assistant", "content": response})
 
 
 if __name__ == "__main__":
