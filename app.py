@@ -5,9 +5,9 @@ import os
 from duckduckgo_search import DDGS
 import streamlit as st
 import streamlit_extras
+from streamlit_extras.add_vertical_space import add_vertical_space
 from streamlit_extras.row import row
 from openai import OpenAI
-
 
 solar_llm = OpenAI(
     api_key=st.secrets["SOLAR_API_KEY"],
@@ -118,10 +118,10 @@ def perform_search(query):
         }
     )
 
-    final_prompt = f"""Provide a comprehensive answer and get straight to the point to answer the user's query.
-Only talk about the search results and nothing else.\n\n
+    final_prompt = f"""Provide a comprehensive answer and get straight to the point to answer the question.
+Only use the results to answer. Do not use any other knowledges.\n\n
 Reply in the language of the query. For example, if the query is in Korean, reply in Korean. If it's in English, reply in English.\n\n
-Here are the search results for query '{query}':\n\n
+Here are the search results for question '{query}':\n\n
 ---
 SEARCH RESULTS:\n
 {str(search_results)}\n\n
@@ -148,7 +148,10 @@ if __name__ == "__main__":
     st.title("🌞 Solar Mini Search")
     st.write("Ask me anything and I will find the best results for you.")
     st.write(
-        "Want to make something similar? Visit https://console.upstage.ai to get your Solar API key."
+        """Want to make something similar? 
+        Visit https://console.upstage.ai to get your Solar API key.
+        Check out the source code at https://github.com/hunkim/solar-search.
+        """
     )
 
     if "messages" not in st.session_state:
@@ -165,3 +168,18 @@ if __name__ == "__main__":
     # Get user input and perform search
     if query := st.chat_input("Search query"):
         perform_search(query)
+    elif len(st.session_state.messages) == 0:
+        sample_fun_questions = [
+            "What is better, Python or Java?",
+            "What is the meaning of life?",
+            "What is LLM, GPT, SolarLLM?",
+            "Best Place to visit in Korea?",
+            "Is Kimchi good for health?",
+        ]
+
+        add_vertical_space(3)
+
+        for question in sample_fun_questions:
+            if st.button(question):
+                perform_search(question)
+                st.rerun()
