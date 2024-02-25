@@ -3,9 +3,9 @@ import json
 import os
 
 from duckduckgo_search import DDGS
-
 import streamlit as st
-from streamlit_extras import row
+import streamlit_extras
+from streamlit_extras.row import row
 from openai import OpenAI
 
 
