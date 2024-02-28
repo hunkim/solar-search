@@ -235,6 +235,8 @@ def perform_search(query):
 
             break
         st.warning(f"It seems the answer is {verify_result}. Attempting again...")
+        st.rerun()
+        
     if verify_result != "correct":
         st.error("I am not sure about the answer. Please ask me another question.")
         st.session_state.messages.append(
@@ -275,6 +277,8 @@ if __name__ == "__main__":
         perform_search(query)
     elif len(st.session_state.messages) == 0:
         sample_fun_questions = [
+            "Tell me about upstage.ai",
+            "Why we love You.com",
             "What is better, Python or Java?",
             "What is the meaning of life?",
             "What is LLM, GPT, SolarLLM?",
