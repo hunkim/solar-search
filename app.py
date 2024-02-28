@@ -235,7 +235,6 @@ def perform_search(query):
 
             break
         st.warning(f"It seems the answer is {verify_result}. Attempting again...")
-        st.rerun()
         
     if verify_result != "correct":
         st.error("I am not sure about the answer. Please ask me another question.")
@@ -245,6 +244,9 @@ def perform_search(query):
                 "content": f"I am not sure about the answer. Please ask me another question.\n\n🤷🤷‍♀️ Answer: {response}",
             }
         )
+
+    st.rerun()
+
 
 
 if __name__ == "__main__":
