@@ -17,6 +17,54 @@ solar_llm = OpenAI(
 solar_model = "solar-1-mini-chat"
 
 
+def generate_followup_questions(query, answer):
+    chat_completion = solar_llm.chat.completions.create(
+        model=solar_model,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a curious bot. Always find good questions. Based on the current question, and answers, generate three follow-up question.",
+            },
+            {
+                "role": "user",
+                "content": """Query: What is the capital of France?
+                Answer: The capital of France is Paris. The Eiffel Tower is in Paris. Food in Paris is good.
+                """,
+            },
+            {
+                "role": "assistant",
+                "content": """{"followup_questions": 
+             ["What is the population of Paris?", 
+             "What is the best time to visit Paris?", "What is the capital of Spain?"]}""",
+            },
+            {
+                "role": "user",
+                "content": """Query: Why sky is blue?
+                Answer: Sky is blue because of Rayleigh scattering. The sky is blue because of the way the Earth's atmosphere scatters sunlight.
+                """,
+            },
+            {
+                "role": "assistant",
+                "content": """{"followup_questions": 
+             ["What is Rayleigh scattering?",
+                "What are the other colors of the sky?", "What is the color of the sun?"]}""",
+            },
+            {
+                "role": "user",
+                "content": f"""Query: {query}\nAnswer: {answer}
+             """,
+            },
+        ],
+    )
+
+    # parse content in json format
+    try:
+        json_query = json.loads(chat_completion.choices[0].message.content)
+        return json_query.get("followup_questions", query)
+    except:
+        return query
+
+
 def get_search_query(query):
     chat_completion = solar_llm.chat.completions.create(
         model=solar_model,
@@ -130,6 +178,7 @@ def search(query):
 
 import requests
 
+
 def you_search(query):
     headers = {"X-API-Key": st.secrets["YDC_API_KEY"]}
     params = {"query": query}
@@ -137,8 +186,7 @@ def you_search(query):
         f"https://api.ydc-index.io/search?query={query}",
         params=params,
         headers=headers,
-    ).json()['hits'][:5]
-
+    ).json()["hits"][:5]
 
 
 def show_search_results(search_results):
@@ -196,6 +244,7 @@ Here are the search results for question '{query}':\n\n
 
 
 def perform_search(query):
+
     with st.chat_message("user"):
         search_query = get_search_query(query)
         st.markdown(f"Search for {query} → `{search_query}`")
@@ -235,7 +284,7 @@ def perform_search(query):
 
             break
         st.warning(f"It seems the answer is {verify_result}. Attempting again...")
-        
+
     if verify_result != "correct":
         st.error("I am not sure about the answer. Please ask me another question.")
         st.session_state.messages.append(
@@ -246,7 +295,6 @@ def perform_search(query):
         )
 
     st.rerun()
-
 
 
 if __name__ == "__main__":
@@ -269,8 +317,8 @@ if __name__ == "__main__":
     # Show previous messages
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            
-            if 'search_query' in message:
+
+            if "search_query" in message:
                 st.markdown(f"{message['content']} → `{message['search_query']}`")
             else:
                 st.markdown(message["content"])
@@ -279,24 +327,29 @@ if __name__ == "__main__":
                 show_search_results(message["search_results"])
                 show_news_articles(message["news_articles"])
 
+    placeholder = st.empty()
     # Get user input and perform search
     if query := st.chat_input("Search query"):
-        perform_search(query)
-    
-    elif len(st.session_state.messages) == 0:
-        sample_fun_questions = [
-            "Tell me about upstage.ai",
-            "Why we love You.com",
-            "What is better, Python or Java?",
-            "What is the meaning of life?",
-            "What is LLM, GPT, SolarLLM?",
-            "Best Place to visit in Korea?",
-            "Is Kimchi good for health?",
-        ]
+        perform_search(query, placeholder)
+    else:
+        if len(st.session_state.messages) < 2:
+            sample_fun_questions = [
+                "Tell me about upstage.ai",
+                "Why we love You.com",
+                "What is better, Python or Java?",
+                "What is the meaning of life?",
+                "What is LLM, GPT, SolarLLM?",
+                "Best Place to visit in Korea?",
+                "Is Kimchi good for health?",
+            ]
+        else:
+            sample_fun_questions = generate_followup_questions(
+                st.session_state.messages[-2]["content"],
+                st.session_state.messages[-1]["content"],
+            )
 
-        add_vertical_space(3)
-
-        for question in sample_fun_questions:
-            if st.button(question):
+       
+        for i, question in enumerate(sample_fun_questions):
+            if st.button(f"{question}"):
                 perform_search(question)
-                st.rerun()
+                break
