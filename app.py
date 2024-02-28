@@ -283,7 +283,7 @@ if __name__ == "__main__":
     if query := st.chat_input("Search query"):
         perform_search(query)
     
-    else:
+    elif len(st.session_state.messages) == 0:
         sample_fun_questions = [
             "Tell me about upstage.ai",
             "Why we love You.com",
