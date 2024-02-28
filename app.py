@@ -271,7 +271,7 @@ if __name__ == "__main__":
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             if 'search_query' in message:
-                st.madown(f" → `{message['search_query']}`")
+                st.markdown(f" → `{message['search_query']}`")
         
             if message["role"] == "user":
                 show_search_results(message["search_results"])
