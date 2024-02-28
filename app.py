@@ -128,6 +128,19 @@ def search(query):
     return results
 
 
+import requests
+
+def you_search(query):
+    headers = {"X-API-Key": st.secrets["YDC_API_KEY"]}
+    params = {"query": query}
+    return requests.get(
+        f"https://api.ydc-index.io/search?query={query}",
+        params=params,
+        headers=headers,
+    ).json()['hits'][:5]
+
+
+
 def show_search_results(search_results):
     if not search_results or len(search_results) == 0:
         return
@@ -137,7 +150,7 @@ def show_search_results(search_results):
     for article in search_results:
         search_row.link_button(
             "🌐 " + article["title"],
-            article["href"],
+            article["url"],
             use_container_width=True,
         )
 
@@ -160,10 +173,10 @@ def find_answer(query, search_results, news_articles):
     context = f"""
 ---
 SEARCH RESULTS:\n
-{str(search_results)}\n\n
+{str(search_results)[:2000]}\n\n
 ---
 NEWS RESULTS:\n
-{str(news_articles)}\n\n
+{str(news_articles)[:1000]}\n\n
 """
     final_prompt = f"""Provide a comprehensive answer and get straight to the point to answer the question.
 Only use the results to answer. Do not use any other knowledges.\n\n
@@ -187,7 +200,7 @@ def perform_search(query):
         search_query = get_search_query(query)
         st.markdown(f"Search for {query} → `{search_query}`")
 
-        search_results = search(search_query)
+        search_results = you_search(search_query)
         show_search_results(search_results)
         # search_fill_content(search_results)
 
