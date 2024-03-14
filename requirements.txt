@@ -1,5 +1,5 @@
 openai
 requests 
-duckduckgo-search 
 streamlit
 streamlit-extras
+gradio

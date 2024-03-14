@@ -2,7 +2,6 @@ import requests
 import json
 import os
 
-from duckduckgo_search import DDGS
 import streamlit as st
 import streamlit_extras
 from streamlit_extras.add_vertical_space import add_vertical_space
@@ -93,59 +92,23 @@ def get_search_query(query):
         return query
 
 
-def answer_verifier(query, context, answer):
-    chat_completion = solar_llm.chat.completions.create(
-        model=solar_model,
-        messages=[
-            {
-                "role": "system",
-                "content": "Your answer verifier. Verify the answer is correct or incorrect based on the context. The answer should be always from the context.",
-            },
-            {
-                "role": "user",
-                "content": """Query: How many dogs do we have?
----
-Context: We have 3 dogs. They are all golden retrievers. They are very friendly.
----
-Answer: I have three dogs and they are golden retrievers.
-             """,
-            },
-            {"role": "assistant", "content": '{"verification_result": "correct"}'},
-            {
-                "role": "user",
-                "content": """Query: Why sky is blue?
----
-Context: Sky is blue because of Rayleigh scattering. The sky is blue because of the way the Earth's atmosphere scatters sunlight.
----
-Answer: Sky is blue because of people like blue colors.
-             """,
-            },
-            {"role": "assistant", "content": '{"verification_result": ""}'},
-            {
-                "role": "user",
-                "content": """Query: What is the capital of France?
---- 
-Context: The capital of France is Paris. The Eiffel Tower is in Paris. Food in Paris is good.
----
-Answer: The capital of France is Seoul. I love seoul.
-             """,
-            },
-            {"role": "assistant", "content": '{"verification_result": "incorrect"}'},
-            {
-                "role": "user",
-                "content": f"""Query: {query}\n---\nContext: {context}\n---\nAnswer: {answer}
-             """,
-            },
-        ],
-    )
-
-    # parse content in json format
+def answer_verifier(content, response):
     try:
-        json_query = json.loads(chat_completion.choices[0].message.content)
-        return json_query.get("verification_result", query)
-    except:
-        return "not sure"
 
+        resp = solar_llm.chat.completions.create(
+        model="solar-1-mini-answer-verification",
+        messages=[{"role": "user", "content": content},
+                    {"role": "assistant","content": response}],
+        )
+
+        print(resp.choices[0].message, resp.choices[0].message.content)
+        # Check if results include yes without case sensitivity
+        # use regular expression for more complex verification
+        return "yes" in resp.choices[0].message.content.lower()
+    
+    except Exception as e:
+        print(e)
+        return False
 
 def news(query: str):
     """Fetch news articles and process their contents."""
@@ -243,58 +206,66 @@ Here are the search results for question '{query}':\n\n
     return response, context
 
 
-def perform_search(query):
+def perform_search(query, placeholder):
+    with placeholder.container():
+        with st.chat_message("user"):
+            search_query = get_search_query(query)
+            st.markdown(f"Search for {query} → `{search_query}`")
 
-    with st.chat_message("user"):
-        search_query = get_search_query(query)
-        st.markdown(f"Search for {query} → `{search_query}`")
+            search_results = you_search(search_query)
+            show_search_results(search_results)
+            # search_fill_content(search_results)
 
-        search_results = you_search(search_query)
-        show_search_results(search_results)
-        # search_fill_content(search_results)
+            news_articles = news(search_query)
+            show_news_articles(news_articles)
+            # news_fill_content(news_articles)
 
-        news_articles = news(search_query)
-        show_news_articles(news_articles)
-        # news_fill_content(news_articles)
-
-    st.session_state.messages.append(
-        {
-            "role": "user",
-            "content": query,
-            "search_query": search_query,
-            "news_articles": news_articles,
-            "search_results": search_results,
-        }
-    )
-
-    verify_result = "not sure"
-    response = ""
-    for attempt in range(3):
-        response, context = find_answer(query, search_results, news_articles)
-        with st.spinner(f"Verifying the answer ({attempt})..."):
-            verify_result = answer_verifier(query, context, response)
-        if verify_result == "correct":
-            st.session_state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": "✅ " + response,
-                }
-            )
-            st.success(f"The answer is {verify_result}")
-
-            break
-        st.warning(f"It seems the answer is {verify_result}. Attempting again...")
-
-    if verify_result != "correct":
-        st.error("I am not sure about the answer. Please ask me another question.")
         st.session_state.messages.append(
             {
-                "role": "assistant",
-                "content": f"I am not sure about the answer. Please ask me another question.\n\n🤷🤷‍♀️ Answer: {response}",
+                "role": "user",
+                "content": query,
+                "search_query": search_query,
+                "news_articles": news_articles,
+                "search_results": search_results,
             }
         )
 
-    st.rerun()
+        verify_result = "not sure"
+        response = ""
+        for attempt in range(3):
+            response, context = find_answer(query, search_results, news_articles)
+            with st.spinner(f"Verifying the answer ({attempt})..."):
+                verify_result = answer_verifier(context, response)
+                if verify_result:
+                    st.session_state.messages.append(
+                        {
+                            "role": "assistant",
+                            "content": "✅ " + response,
+                        }
+                    )
+                    st.success(f"The answer is {verify_result}")
+
+                    break
+            st.warning(f"It seems the answer is {verify_result}. Attempting again...")
+
+        if not verify_result:
+            st.error("I am not sure about the answer. Please ask me another question.")
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": f"I am not sure about the answer. Please ask me another question.\n\n🤷🤷‍♀️ Answer: {response}",
+                }
+            )
+
+
+        # generate follow-up questions
+        st.session_state.followup_questions = generate_followup_questions(
+            query, response
+        )[:3]
+
+        st.rerun()
+
+    
 
 
 if __name__ == "__main__":
@@ -314,6 +285,17 @@ if __name__ == "__main__":
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
+    if "followup_questions" not in st.session_state:
+        st.session_state.followup_questions = [
+            "Tell me about upstage.ai",
+            "Why people love You.com servicne?",
+            "What is better, Python or Java?",
+            "What is the meaning of life?",
+            "What is LLM, GPT, SolarLLM?",
+            "Best Place to visit in Korea?",
+            "What is the capital of France?",
+        ]
+
     # Show previous messages
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
@@ -331,25 +313,12 @@ if __name__ == "__main__":
     # Get user input and perform search
     if query := st.chat_input("Search query"):
         perform_search(query, placeholder)
-    else:
-        if len(st.session_state.messages) < 2:
-            sample_fun_questions = [
-                "Tell me about upstage.ai",
-                "Why we love You.com",
-                "What is better, Python or Java?",
-                "What is the meaning of life?",
-                "What is LLM, GPT, SolarLLM?",
-                "Best Place to visit in Korea?",
-                "Is Kimchi good for health?",
-            ]
-        else:
-            sample_fun_questions = generate_followup_questions(
-                st.session_state.messages[-2]["content"],
-                st.session_state.messages[-1]["content"],
-            )
 
-       
-        for i, question in enumerate(sample_fun_questions):
-            if st.button(f"{question}"):
-                perform_search(question)
-                break
+    placeholder2 = st.empty()
+    for i, question in enumerate(st.session_state.followup_questions):
+        st.button(
+            f"{question}",
+            key=f"followup_{i}",
+            on_click=perform_search,
+            args=(question, placeholder2),
+        )
